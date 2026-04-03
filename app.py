@@ -19,6 +19,7 @@ from lnd_client import LNDClient
 # CONFIGURATION
 # ===========================================
 app = Flask(__name__)
+DISABLE_LIGHTNING = os.environ.get("DISABLE_LIGHTNING", "true") == "true"
 
 # Load product catalog
 PRODUCTS_FILE = os.path.join(os.path.dirname(__file__), "products.json")
@@ -34,7 +35,12 @@ if not LND_DIR:
 if not REST_HOST:
     REST_HOST = "https://localhost:8082"
 
-lnd = LNDClient(lnd_dir=LND_DIR, rest_host=REST_HOST)
+if not DISABLE_LIGHTNING:
+    # Connect to LND only when Lightning is enabled.
+    lnd = LNDClient(lnd_dir=LND_DIR, rest_host=REST_HOST)
+else:
+    print("Lightning disabled for deployment")
+    lnd = None
 
 
 # ===========================================
@@ -182,4 +188,4 @@ if __name__ == "__main__":
     print("Press Ctrl+C to stop")
     print()
     PORT = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=PORT, debug=True)
+    app.run(host="0.0.0.0", port=PORT)
