@@ -19,7 +19,8 @@ from lnd_client import LNDClient
 # CONFIGURATION
 # ===========================================
 app = Flask(__name__)
-DISABLE_LIGHTNING = os.environ.get("DISABLE_LIGHTNING", "true") == "true"
+DISABLE_LIGHTNING = os.environ.get(
+    "DISABLE_LIGHTNING", "true").lower() == "true"
 
 # Load product catalog
 PRODUCTS_FILE = os.path.join(os.path.dirname(__file__), "products.json")
@@ -67,6 +68,11 @@ def generate_qr_base64(data):
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
+def lightning_disabled_message():
+    """Consistent error message for deployments with Lightning turned off."""
+    return "Lightning payments are disabled for this deployment."
+
+
 # ===========================================
 # ROUTES
 # ===========================================
@@ -82,6 +88,12 @@ def checkout(product_id):
     product = get_product(product_id)
     if not product:
         return "Product not found", 404
+    if lnd is None:
+        return render_template(
+            "error.html",
+            error=lightning_disabled_message(),
+            product=product,
+        ), 503
 
     try:
         # Create a Lightning invoice via LND
@@ -113,6 +125,8 @@ def checkout(product_id):
 @app.route("/api/check_payment/<r_hash>")
 def check_payment(r_hash):
     """API endpoint to check if an invoice has been paid."""
+    if lnd is None:
+        return jsonify({"settled": False, "error": lightning_disabled_message()}), 503
     try:
         # Frontend polls this endpoint until settled becomes true.
         invoice = lnd.lookup_invoice(r_hash)
@@ -134,6 +148,8 @@ def success(product_id):
 @app.route("/api/node_info")
 def node_info():
     """API endpoint to get LND node information."""
+    if lnd is None:
+        return jsonify({"error": lightning_disabled_message()}), 503
     try:
         info = lnd.get_info()
         balance = lnd.channel_balance()
