@@ -1,79 +1,106 @@
-{% extends "base.html" %}
-
-{% block content %}
+{% extends "base.html" %} {% block content %}
 <div class="checkout-container">
-    <h2>Pay with Lightning</h2>
-    <p class="product-name">{{ product.name }} - {{ "{:,}".format(product.price) }} sats</p>
+  <h2>Pay with Lightning</h2>
+  <p class="product-name">
+    {{ product.name }} - {{ "{:,}".format(product.price) }} sats
+  </p>
 
-    <div class="qr-container">
-        <img src="data:image/png;base64,{{ qr_base64 }}" alt="Lightning Invoice QR Code" width="280" height="280">
-    </div>
+  <div class="qr-container">
+    <img
+      src="data:image/png;base64,{{ qr_base64 }}"
+      alt="Lightning Invoice QR Code"
+      width="280"
+      height="280"
+    />
+  </div>
 
-    <div class="invoice-text" id="invoice-text" onclick="copyInvoice()">
-        {{ payment_request }}
-    </div>
+  <div class="invoice-text" id="invoice-text" onclick="copyInvoice()">
+    {{ payment_request }}
+  </div>
 
-    <div class="payment-status status-waiting" id="payment-status">
-        <span class="spinner"></span>
-        Waiting for payment...
-    </div>
+  <div class="payment-status status-waiting" id="payment-status">
+    <span class="spinner"></span>
+    Waiting for payment...
+  </div>
 
-    <div class="how-to-pay">
-        <h3>How to pay (using lncli):</h3>
-        <ol>
-            <li>Copy the invoice above (click it)</li>
-            <li>In your terminal, run:<br>
-                <code>alice payinvoice INVOICE</code></li>
-            <li>Type <code>yes</code> to confirm</li>
-            <li>This page updates automatically!</li>
-        </ol>
-    </div>
+  <div class="how-to-pay">
+    <h3>How to pay (using lncli):</h3>
+    <ol>
+      <li>Copy the invoice above (click it)</li>
+      <li>
+        In your terminal, run:<br />
+        <code>alice payinvoice INVOICE</code>
+      </li>
+      <li>Type <code>yes</code> to confirm</li>
+      <li>This page updates automatically!</li>
+    </ol>
+  </div>
 
-    <a href="/" class="btn btn-back" style="margin-top: 20px;">Back to Store</a>
+  <a href="/" class="btn btn-back" style="margin-top: 20px">Back to Store</a>
 </div>
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-    const rHash = "{{ r_hash }}";
-    const productId = "{{ product.id }}";
-    let polling = true;
+  // Values injected from Flask so browser can poll invoice status.
+  const rHash = "{{ r_hash }}";
+  const productId = "{{ product.id }}";
+  let polling = true;
+  let counter = 3600;
 
-    function copyInvoice() {
-        const text = document.getElementById('invoice-text').innerText;
-        navigator.clipboard.writeText(text).then(() => {
-            const el = document.getElementById('invoice-text');
-            const original = el.style.borderColor;
-            el.style.borderColor = '#4ec9b0';
-            setTimeout(() => { el.style.borderColor = original; }, 1000);
-        });
-    }
+  // Copy the BOLT11 invoice string to clipboard when invoice text is clicked.
+  function copyInvoice() {
+    const text = document.getElementById("invoice-text").innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const el = document.getElementById("invoice-text");
+      const original = el.style.borderColor;
+      el.style.borderColor = "#4ec9b0";
+      setTimeout(() => {
+        el.style.borderColor = original;
+      }, 1000);
+    });
+  }
 
-    function checkPayment() {
-        if (!polling) return;
+  // Poll backend until invoice settles, then redirect to success page.
+  function checkPayment() {
+    if (!polling) return;
 
-        fetch('/api/check_payment/' + rHash)
-            .then(r => r.json())
-            .then(data => {
-                if (data.settled) {
-                    polling = false;
-                    const status = document.getElementById('payment-status');
-                    status.className = 'payment-status status-paid';
-                    status.innerHTML = 'Payment received!';
+    fetch("/api/check_payment/" + rHash)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.settled) {
+          polling = false;
+          const status = document.getElementById("payment-status");
+          status.className = "payment-status status-paid";
+          status.innerHTML = "Payment received!";
 
-                    setTimeout(() => {
-                        window.location.href = '/success/' + productId;
-                    }, 1500);
-                } else {
-                    setTimeout(checkPayment, 2000);
-                }
-            })
-            .catch(() => {
-                setTimeout(checkPayment, 3000);
-            });
-    }
+          // Small delay gives users visual confirmation before redirect.
+          setTimeout(() => {
+            window.location.href = "/success/" + productId;
+          }, 1500);
+        } else {
+          // Keep checking while invoice remains unpaid.
+          setTimeout(checkPayment, 2000);
+        }
+      })
+      .catch(() => {
+        // Retry on transient network errors.
+        setTimeout(checkPayment, 3000);
+      });
+  }
 
-    // Start polling for payment
-    checkPayment();
+  // Start polling for payment
+  checkPayment();
+
+  // Optional countdown display if the template includes an element with id="counter".
+  const el = document.getElementById("counter");
+  if (el) {
+    const intervalId = setInterval(() => {
+      if (counter <= 0) {
+        clearInterval(intervalId);
+        return;
+      }
+      counter -= 1;
+      el.innerText = counter;
+    }, 1000);
+  }
 </script>
 {% endblock %}

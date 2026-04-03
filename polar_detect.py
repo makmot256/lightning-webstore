@@ -56,6 +56,7 @@ def find_polar_node(node_name="bob"):
 
     networks_sorted = sorted(networks, key=sort_key, reverse=True)
 
+    # Walk newest/running networks first, then scan each Lightning node entry.
     for network in networks_sorted:
         nodes = network.get("nodes", {})
         lnd_nodes = nodes.get("lightning", [])
@@ -118,6 +119,7 @@ def auto_detect(node_name="bob"):
     env_lnd_dir = os.environ.get("LND_DIR")
     env_rest_host = os.environ.get("REST_HOST")
 
+    # Require both values so we do not return a half-configured connection.
     if env_lnd_dir and env_rest_host:
         return (os.path.expanduser(env_lnd_dir), env_rest_host)
 
@@ -139,7 +141,8 @@ if __name__ == "__main__":
 
     polar = find_polar_node("bob")
     if polar:
-        print(f"Polar: Found node '{polar['name']}' in network '{polar['network_name']}'")
+        print(
+            f"Polar: Found node '{polar['name']}' in network '{polar['network_name']}'")
         print(f"  LND dir:   {polar['lnd_dir']}")
         print(f"  REST host: {polar['rest_host']}")
         print(f"  REST port: {polar['rest_port']}")

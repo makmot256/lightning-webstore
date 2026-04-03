@@ -22,11 +22,13 @@ app = Flask(__name__)
 
 # Load product catalog
 PRODUCTS_FILE = os.path.join(os.path.dirname(__file__), "products.json")
+# Keep products in memory so each request avoids disk I/O.
 with open(PRODUCTS_FILE) as f:
     PRODUCTS = json.load(f)
 
 # Auto-detect LND from Polar, or use manual defaults
 LND_DIR, REST_HOST = auto_detect("bob")
+# Fallbacks keep local bootcamp setup working even if Polar detection fails.
 if not LND_DIR:
     LND_DIR = os.path.expanduser("~/bootcamp-code/day3/bob")
 if not REST_HOST:
@@ -81,6 +83,7 @@ def checkout(product_id):
         result = lnd.add_invoice(amount=product["price"], memo=memo)
 
         payment_request = result["payment_request"]
+        # LND returns r_hash in base64; convert to hex so it can be used safely in URL paths.
         r_hash = base64.b64decode(result["r_hash"]).hex()
 
         # Generate QR code
@@ -105,6 +108,7 @@ def checkout(product_id):
 def check_payment(r_hash):
     """API endpoint to check if an invoice has been paid."""
     try:
+        # Frontend polls this endpoint until settled becomes true.
         invoice = lnd.lookup_invoice(r_hash)
         settled = invoice.get("settled", False)
         return jsonify({"settled": settled})
@@ -127,6 +131,7 @@ def node_info():
     try:
         info = lnd.get_info()
         balance = lnd.channel_balance()
+        # Normalize different balance response formats seen across LND versions.
         return jsonify({
             "alias": info.get("alias", "unknown"),
             "pubkey": info.get("identity_pubkey", "unknown"),
@@ -176,4 +181,5 @@ if __name__ == "__main__":
     print("Starting webstore at http://127.0.0.1:5000")
     print("Press Ctrl+C to stop")
     print()
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    PORT = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=PORT, debug=True)

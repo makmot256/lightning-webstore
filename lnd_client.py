@@ -5,6 +5,7 @@ Connects to an LND node via REST API with macaroon authentication.
 Reused in Day 5 hackathon starter.
 """
 
+from polar_detect import auto_detect
 import base64
 import json
 import os
@@ -19,10 +20,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # CONFIGURATION
 # ===========================================
 # Auto-detect from Polar, or fall back to manual defaults
-from polar_detect import auto_detect
 
 _detected_dir, _detected_host = auto_detect("bob")
 
+# Defaults are module-level so callers can construct LNDClient() with no arguments.
 LND_DIR = _detected_dir or os.path.expanduser("~/bootcamp-code/day3/bob")
 REST_HOST = _detected_host or "https://localhost:8082"
 
@@ -65,12 +66,14 @@ class LNDClient:
                 "If using Polar, make sure it's running with a node named 'bob'."
             )
         url = f"{self.rest_host}{endpoint}"
+        # LND REST expects macaroon in this specific gRPC metadata header.
         headers = {"Grpc-Metadata-macaroon": self.macaroon}
 
         if method == "GET":
             resp = requests.get(url, headers=headers, verify=False)
         elif method == "POST":
             headers["Content-Type"] = "application/json"
+            # LND REST endpoints accept JSON payloads for invoice/payment operations.
             resp = requests.post(
                 url, headers=headers, data=json.dumps(data), verify=False
             )
@@ -80,6 +83,7 @@ class LNDClient:
             raise ValueError(f"Unsupported method: {method}")
 
         resp.raise_for_status()
+        # Most LND REST endpoints return JSON objects.
         return resp.json()
 
     # ===========================================
