@@ -1,5 +1,8 @@
 flask
+flask-sqlalchemy
+sqlalchemy
 requests
 qrcode
 Pillow
 gunicorn
+psycopg2-binary

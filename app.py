@@ -8,9 +8,11 @@ import json
 import os
 import io
 import base64
+from datetime import datetime
 
 import qrcode
 from flask import Flask, render_template, jsonify, request
+from flask_sqlalchemy import SQLAlchemy
 
 from polar_detect import auto_detect, find_polar_node
 from lnd_client import LNDClient
@@ -21,6 +23,14 @@ from lnd_client import LNDClient
 app = Flask(__name__)
 DISABLE_LIGHTNING = os.environ.get(
     "DISABLE_LIGHTNING", "true").lower() == "true"
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///webstore.db")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
 
 # Load product catalog
 PRODUCTS_FILE = os.path.join(os.path.dirname(__file__), "products.json")
@@ -42,6 +52,21 @@ if not DISABLE_LIGHTNING:
 else:
     print("Lightning disabled for deployment")
     lnd = None
+
+
+class Order(db.Model):
+    """Tracks checkout invoices so payment status can be persisted."""
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.String(64), nullable=False)
+    amount_sats = db.Column(db.Integer, nullable=False)
+    payment_hash = db.Column(db.String(128), unique=True, nullable=False)
+    settled = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(
+        db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+with app.app_context():
+    db.create_all()
 
 
 # ===========================================
@@ -104,6 +129,15 @@ def checkout(product_id):
         # LND returns r_hash in base64; convert to hex so it can be used safely in URL paths.
         r_hash = base64.b64decode(result["r_hash"]).hex()
 
+        order = Order(
+            product_id=product_id,
+            amount_sats=product["price"],
+            payment_hash=r_hash,
+            settled=False,
+        )
+        db.session.add(order)
+        db.session.commit()
+
         # Generate QR code
         qr_base64 = generate_qr_base64(payment_request.upper())
 
@@ -131,6 +165,11 @@ def check_payment(r_hash):
         # Frontend polls this endpoint until settled becomes true.
         invoice = lnd.lookup_invoice(r_hash)
         settled = invoice.get("settled", False)
+        if settled:
+            order = Order.query.filter_by(payment_hash=r_hash).first()
+            if order and not order.settled:
+                order.settled = True
+                db.session.commit()
         return jsonify({"settled": settled})
     except Exception as e:
         return jsonify({"settled": False, "error": str(e)})
